@@ -1,0 +1,42 @@
+import type { Occurrence } from "@/types";
+
+export const mockOccurrences: Occurrence[] = [
+  {
+    id: "occurrence-1",
+    eventId: "event-1",
+    placeId: "place-6",
+    date: "2026-07-18",
+    time: "18:05",
+    durationMinutes: 180,
+    name: "Phillies vs. Mets",
+    ticketUrl: "https://mlb.com/phillies/tickets",
+    imageUrl: "https://images.unsplash.com/photo-1566577739112-5180d4bf9390?w=800",
+    createdAt: "2024-01-01T00:00:00Z",
+    updatedAt: "2024-01-01T00:00:00Z",
+  },
+  {
+    id: "occurrence-2",
+    eventId: "event-2",
+    placeId: "place-3",
+    date: "2026-08-29",
+    time: "12:00",
+    durationMinutes: 600,
+    name: "Made in America 2026 — Day 1",
+    ticketUrl: "https://madeinamericafest.com/tickets",
+    imageUrl: "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=800",
+    createdAt: "2024-01-02T00:00:00Z",
+    updatedAt: "2024-01-02T00:00:00Z",
+  },
+  {
+    id: "occurrence-3",
+    eventId: "event-3",
+    placeId: "place-9",
+    date: "2026-08-08",
+    time: "19:00",
+    durationMinutes: 180,
+    name: "Gaslight Anthem at the Stone Pony",
+    ticketUrl: "https://stoneponyonline.com/tickets",
+    createdAt: "2024-01-03T00:00:00Z",
+    updatedAt: "2024-01-03T00:00:00Z",
+  },
+];
