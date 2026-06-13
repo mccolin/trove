@@ -22,8 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCreateListItem } from "@/hooks/useListItems";
-import { searchMapboxPlaces, createPlace } from "@/services/places";
-import type { MapboxCandidate } from "@/services/places";
+import {
+  suggestMapboxPlaces,
+  retrieveMapboxPlace,
+  createPlace,
+} from "@/services/places";
+import type { MapboxSuggestion } from "@/services/places";
 import type { Place, ListItemPriority } from "@/types";
 
 const schema = z.object({
@@ -47,10 +51,15 @@ export function AddListItemDialog({
   proximity,
 }: AddListItemDialogProps) {
   const [query, setQuery] = useState("");
-  const [candidates, setCandidates] = useState<MapboxCandidate[]>([]);
+  const [suggestions, setSuggestions] = useState<MapboxSuggestion[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
-  const [searching, setSearching] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [retrieving, setRetrieving] = useState(false);
+
+  // One UUID per search session; refreshed after each /retrieve (ends the billing session)
+  const sessionTokenRef = useRef(crypto.randomUUID());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const createItem = useCreateListItem();
 
   const { register, handleSubmit, reset, setValue } = useForm<FormValues>({
@@ -58,20 +67,29 @@ export function AddListItemDialog({
     defaultValues: { priority: "medium" },
   });
 
-  // Debounced typeahead — fires 350ms after the user stops typing
+  // Refresh session token whenever the dialog opens so each search session is distinct
+  useEffect(() => {
+    if (open) sessionTokenRef.current = crypto.randomUUID();
+  }, [open]);
+
+  // Debounced suggest — fires 350 ms after the user stops typing
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     if (!query.trim() || selectedPlace) {
-      setCandidates([]);
+      setSuggestions([]);
       return;
     }
 
     debounceRef.current = setTimeout(async () => {
-      setSearching(true);
-      const results = await searchMapboxPlaces(query, proximity);
-      setCandidates(results);
-      setSearching(false);
+      setSuggesting(true);
+      const results = await suggestMapboxPlaces(
+        query,
+        sessionTokenRef.current,
+        proximity
+      );
+      setSuggestions(results);
+      setSuggesting(false);
     }, 350);
 
     return () => {
@@ -79,19 +97,35 @@ export function AddListItemDialog({
     };
   }, [query, proximity, selectedPlace]);
 
-  const handleSelect = async (candidate: MapboxCandidate) => {
-    setCandidates([]);
-    // Persist the place into the mock store so the ListItem can reference it
+  const handleSelect = async (suggestion: MapboxSuggestion) => {
+    setSuggestions([]);
+    setRetrieving(true);
+
+    const retrieved = await retrieveMapboxPlace(
+      suggestion.mapboxId,
+      sessionTokenRef.current
+    );
+
+    // /retrieve ends this billing session — get a fresh token for the next search
+    sessionTokenRef.current = crypto.randomUUID();
+
+    if (!retrieved) {
+      setRetrieving(false);
+      return;
+    }
+
     const place = await createPlace({
-      name: candidate.name,
+      name: retrieved.name,
       description: "",
-      address: candidate.fullAddress,
-      lat: candidate.lat,
-      lng: candidate.lng,
-      category: candidate.category,
-      externalIds: { mapboxId: candidate.mapboxId },
+      address: retrieved.fullAddress,
+      lat: retrieved.lat,
+      lng: retrieved.lng,
+      category: retrieved.category,
+      externalIds: { mapboxId: suggestion.mapboxId },
     });
+
     setSelectedPlace(place);
+    setRetrieving(false);
   };
 
   const onSubmit = async (values: FormValues) => {
@@ -111,10 +145,12 @@ export function AddListItemDialog({
   const handleClose = () => {
     reset();
     setQuery("");
-    setCandidates([]);
+    setSuggestions([]);
     setSelectedPlace(null);
     onOpenChange(false);
   };
+
+  const isLoading = suggesting || retrieving;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -135,35 +171,46 @@ export function AddListItemDialog({
                   if (selectedPlace) setSelectedPlace(null);
                 }}
                 autoComplete="off"
+                disabled={retrieving}
               />
-              {searching && (
+              {isLoading && (
                 <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
               )}
             </div>
           </div>
 
-          {/* Typeahead results */}
-          {candidates.length > 0 && !selectedPlace && (
+          {/* Suggestion dropdown */}
+          {suggestions.length > 0 && !selectedPlace && (
             <div className="border rounded-md divide-y max-h-56 overflow-y-auto shadow-sm">
-              {candidates.map((c) => (
+              {suggestions.map((s) => (
                 <button
-                  key={c.mapboxId}
+                  key={s.mapboxId}
                   type="button"
                   className="w-full text-left px-3 py-2.5 hover:bg-accent text-sm flex items-start gap-2"
-                  onClick={() => handleSelect(c)}
+                  onClick={() => handleSelect(s)}
                 >
                   <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground" />
                   <div className="min-w-0">
-                    <p className="font-medium truncate">{c.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{c.fullAddress}</p>
+                    <p className="font-medium truncate">{s.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {s.fullAddress}
+                    </p>
                   </div>
                 </button>
               ))}
             </div>
           )}
 
-          {/* No results state */}
-          {!searching && query.trim().length > 1 && candidates.length === 0 && !selectedPlace && (
+          {/* Retrieving state */}
+          {retrieving && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading place details…
+            </div>
+          )}
+
+          {/* No results */}
+          {!isLoading && query.trim().length > 1 && suggestions.length === 0 && !selectedPlace && (
             <p className="text-xs text-muted-foreground text-center py-2">
               No results found. Try a different search.
             </p>
@@ -176,7 +223,9 @@ export function AddListItemDialog({
                 <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
                 <div className="min-w-0">
                   <p className="font-medium text-sm truncate">{selectedPlace.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{selectedPlace.address}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {selectedPlace.address}
+                  </p>
                 </div>
               </div>
               <Button
@@ -220,7 +269,10 @@ export function AddListItemDialog({
               <Button type="button" variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={!selectedPlace || createItem.isPending}>
+              <Button
+                type="submit"
+                disabled={!selectedPlace || createItem.isPending}
+              >
                 {createItem.isPending ? "Adding…" : "Add to List"}
               </Button>
             </DialogFooter>

@@ -1,10 +1,17 @@
 import type { Place } from "@/types";
 import { mockPlaces } from "@/mock";
 
-// ---- Mapbox Geocoding ----
+// ---- Mapbox Search Box API ----
 
-export interface MapboxCandidate {
+export interface MapboxSuggestion {
   mapboxId: string;
+  name: string;
+  fullAddress: string;
+  placeFormatted: string;
+  poiCategory: string[];
+}
+
+export interface MapboxRetrieved {
   name: string;
   fullAddress: string;
   lat: number;
@@ -12,31 +19,65 @@ export interface MapboxCandidate {
   category: string;
 }
 
-interface MapboxGeocodingResponse {
-  features: Array<{
-    id: string;
-    text: string;
-    place_name: string;
-    geometry: { coordinates: [number, number] };
-    properties?: { category?: string };
+interface SuggestResponse {
+  suggestions: Array<{
+    name: string;
+    mapbox_id: string;
+    full_address?: string;
+    place_formatted: string;
+    poi_category?: string[];
   }>;
 }
 
-export async function searchMapboxPlaces(
-  query: string,
-  proximity?: { lat: number; lng: number }
-): Promise<MapboxCandidate[]> {
-  const token = import.meta.env.VITE_MAPBOX_TOKEN;
+interface RetrieveResponse {
+  features: Array<{
+    properties: {
+      name: string;
+      full_address?: string;
+      place_formatted?: string;
+      coordinates: { latitude: number; longitude: number };
+      poi_category?: string[];
+    };
+  }>;
+}
 
+function getToken(): string | null {
+  const token = import.meta.env.VITE_MAPBOX_TOKEN;
   if (!token) {
-    console.warn("[Mapbox] VITE_MAPBOX_TOKEN is not set — geocoding disabled.");
-    return [];
+    console.warn("[Mapbox] VITE_MAPBOX_TOKEN is not set.");
+    return null;
   }
-  if (!query.trim()) return [];
+  return token;
+}
+
+async function mapboxFetch(url: string, label: string): Promise<unknown | null> {
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch (err) {
+    console.error(`[Mapbox] Network error (${label}):`, err);
+    return null;
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "(unreadable)");
+    console.error(`[Mapbox] ${res.status} ${res.statusText} (${label}):`, body);
+    return null;
+  }
+  return res.json();
+}
+
+export async function suggestMapboxPlaces(
+  query: string,
+  sessionToken: string,
+  proximity?: { lat: number; lng: number }
+): Promise<MapboxSuggestion[]> {
+  const token = getToken();
+  if (!token || !query.trim()) return [];
 
   const params = new URLSearchParams({
+    q: query.trim(),
+    session_token: sessionToken,
     access_token: token,
-    types: "poi",
     limit: "8",
     country: "us",
     language: "en",
@@ -45,34 +86,56 @@ export async function searchMapboxPlaces(
     params.set("proximity", `${proximity.lng},${proximity.lat}`);
   }
 
-  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query.trim())}.json?${params}`;
-  console.debug("[Mapbox] GET", url.replace(token, "pk.***"));
+  console.debug(`[Mapbox] suggest "${query}"`);
+  const data = await mapboxFetch(
+    `https://api.mapbox.com/search/searchbox/v1/suggest?${params}`,
+    "suggest"
+  ) as SuggestResponse | null;
+  if (!data) return [];
 
-  let res: Response;
-  try {
-    res = await fetch(url);
-  } catch (err) {
-    console.error("[Mapbox] Network error:", err);
-    return [];
-  }
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "(unreadable)");
-    console.error(`[Mapbox] ${res.status} ${res.statusText}:`, body);
-    return [];
-  }
-
-  const data = (await res.json()) as MapboxGeocodingResponse;
-  console.debug(`[Mapbox] ${data.features.length} result(s) for "${query}"`);
-
-  return data.features.map((f) => ({
-    mapboxId: f.id,
-    name: f.text,
-    fullAddress: f.place_name,
-    lat: f.geometry.coordinates[1],
-    lng: f.geometry.coordinates[0],
-    category: f.properties?.category?.split(",")[0]?.trim() ?? "Place",
+  console.debug(`[Mapbox] ${data.suggestions.length} suggestion(s)`);
+  return data.suggestions.map((s) => ({
+    mapboxId: s.mapbox_id,
+    name: s.name,
+    fullAddress: s.full_address ?? s.place_formatted,
+    placeFormatted: s.place_formatted,
+    poiCategory: s.poi_category ?? [],
   }));
+}
+
+export async function retrieveMapboxPlace(
+  mapboxId: string,
+  sessionToken: string
+): Promise<MapboxRetrieved | null> {
+  const token = getToken();
+  if (!token) return null;
+
+  const params = new URLSearchParams({
+    session_token: sessionToken,
+    access_token: token,
+  });
+
+  console.debug(`[Mapbox] retrieve ${mapboxId}`);
+  const data = await mapboxFetch(
+    `https://api.mapbox.com/search/searchbox/v1/retrieve/${mapboxId}?${params}`,
+    "retrieve"
+  ) as RetrieveResponse | null;
+  if (!data) return null;
+
+  const feature = data.features[0];
+  if (!feature) {
+    console.warn("[Mapbox] retrieve returned no features");
+    return null;
+  }
+
+  const p = feature.properties;
+  return {
+    name: p.name,
+    fullAddress: p.full_address ?? p.place_formatted ?? "",
+    lat: p.coordinates.latitude,
+    lng: p.coordinates.longitude,
+    category: p.poi_category?.[0] ?? "Place",
+  };
 }
 
 let places = [...mockPlaces];
