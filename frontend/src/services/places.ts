@@ -145,6 +145,10 @@ export async function getPlaces(): Promise<Place[]> {
   return places;
 }
 
+export function getPlaceById(id: string): Place | undefined {
+  return places.find((p) => p.id === id);
+}
+
 export async function getPlace(id: string): Promise<Place | undefined> {
   await delay();
   return places.find((p) => p.id === id);

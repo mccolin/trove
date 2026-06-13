@@ -1,4 +1,5 @@
-import { X, MapPin, Calendar, ExternalLink, Star, CheckCircle } from "lucide-react";
+import { useState } from "react";
+import { X, MapPin, Calendar, ExternalLink, Star, CheckCircle, CalendarPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -6,7 +7,8 @@ import { usePlans } from "@/hooks/usePlans";
 import { useMemories } from "@/hooks/useMemories";
 import { useUpdateListItem } from "@/hooks/useListItems";
 import { resolveTarget } from "@/services/listItems";
-import { mockPlaces } from "@/mock";
+import { getPlaceById } from "@/services/places";
+import { AddPlanDialog } from "@/features/plans/AddPlanDialog";
 import type { ListItem, Place, Occurrence } from "@/types";
 
 interface ListItemDetailDrawerProps {
@@ -15,6 +17,7 @@ interface ListItemDetailDrawerProps {
 }
 
 export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProps) {
+  const [showAddPlan, setShowAddPlan] = useState(false);
   const target = resolveTarget(item);
   const { data: plans } = usePlans(item.id);
   const { data: memories } = useMemories(item.id);
@@ -24,7 +27,7 @@ export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProp
     item.targetType === "place"
       ? (target as Place)
       : item.targetType === "occurrence"
-      ? mockPlaces.find((p) => p.id === (target as Occurrence)?.placeId)
+      ? getPlaceById((target as Occurrence)?.placeId ?? "")
       : undefined;
 
   const handleMarkDone = () => {
@@ -108,7 +111,20 @@ export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProp
 
         {/* Plans */}
         <div>
-          <p className="text-sm font-medium mb-2">Plans</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium">Plans</p>
+            {item.status !== "done" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto py-0.5 px-1.5 text-xs"
+                onClick={() => setShowAddPlan(true)}
+              >
+                <CalendarPlus className="h-3.5 w-3.5 mr-1" />
+                Add
+              </Button>
+            )}
+          </div>
           {plans && plans.length > 0 ? (
             <div className="space-y-2">
               {plans.map((plan) => (
@@ -164,6 +180,15 @@ export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProp
             variant="outline"
             size="sm"
             className="flex-1"
+            onClick={() => setShowAddPlan(true)}
+          >
+            <CalendarPlus className="h-4 w-4 mr-1" />
+            Add Plan
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
             onClick={handleMarkDone}
             disabled={updateItem.isPending}
           >
@@ -172,6 +197,13 @@ export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProp
           </Button>
         </div>
       )}
+
+      <AddPlanDialog
+        listItemId={item.id}
+        itemStatus={item.status}
+        open={showAddPlan}
+        onOpenChange={setShowAddPlan}
+      />
     </div>
   );
 }

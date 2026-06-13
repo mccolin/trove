@@ -1,10 +1,6 @@
 import type { ListItem, Place, Event, Occurrence } from "@/types";
-import {
-  mockListItems,
-  mockPlaces,
-  mockEvents,
-  mockOccurrences,
-} from "@/mock";
+import { mockListItems, mockEvents, mockOccurrences } from "@/mock";
+import { getPlaceById } from "@/services/places";
 
 let items = [...mockListItems];
 
@@ -22,7 +18,7 @@ export function resolveTarget(
   item: ListItem
 ): Place | Event | Occurrence | undefined {
   if (item.targetType === "place")
-    return mockPlaces.find((p) => p.id === item.targetId);
+    return getPlaceById(item.targetId);
   if (item.targetType === "event")
     return mockEvents.find((e) => e.id === item.targetId);
   if (item.targetType === "occurrence")

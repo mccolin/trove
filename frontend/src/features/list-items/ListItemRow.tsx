@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { ListItem, Place, Occurrence } from "@/types";
 import { resolveTarget } from "@/services/listItems";
-import { mockPlaces } from "@/mock";
+import { getPlaceById } from "@/services/places";
 
 interface ListItemRowProps {
   item: ListItem;
@@ -36,7 +36,7 @@ function getTargetLocation(item: ListItem): string | undefined {
   }
   if (item.targetType === "occurrence") {
     const occ = resolveTarget(item) as Occurrence | undefined;
-    const place = mockPlaces.find((p) => p.id === occ?.placeId);
+    const place = getPlaceById(occ?.placeId ?? "");
     return place?.address;
   }
   return undefined;

@@ -2,10 +2,10 @@ import { useRef, useEffect } from "react";
 import Map, { Marker, NavigationControl } from "react-map-gl";
 import type { MapRef } from "react-map-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { MapPin } from "lucide-react";
+import { MapPin, PinOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveTarget } from "@/services/listItems";
-import { mockPlaces } from "@/mock";
+import { getPlaceById } from "@/services/places";
 import type { ListItem, Place, Occurrence } from "@/types";
 
 interface Pin {
@@ -31,7 +31,7 @@ function getItemCoords(item: ListItem): { lat: number; lng: number } | null {
   if (item.targetType === "occurrence") {
     const occ = resolveTarget(item) as Occurrence | undefined;
     if (occ) {
-      const place = mockPlaces.find((p) => p.id === occ.placeId);
+      const place = getPlaceById(occ.placeId);
       if (place) return { lat: place.lat, lng: place.lng };
     }
   }
@@ -65,13 +65,23 @@ export function ListMap({
     })
     .filter((p): p is Pin => p !== null);
 
+  useEffect(() => {
+    if (!selectedItemId) return;
+    const pin = pins.find((p) => p.id === selectedItemId);
+    if (!pin) return;
+    mapRef.current?.easeTo({
+      center: [pin.lng, pin.lat],
+      duration: 500,
+    });
+  }, [selectedItemId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!MAPBOX_TOKEN) {
     return (
       <div className="flex items-center justify-center h-full bg-muted text-muted-foreground text-sm p-4 text-center">
         <div>
-          <MapPin className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          <p>Map requires a Mapbox token.</p>
-          <p className="text-xs mt-1">Set VITE_MAPBOX_TOKEN in your .env file.</p>
+          <PinOff className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>Map not correctly configured.</p>
+          <p className="text-xs mt-1">MapBox requires an active account/token.</p>
         </div>
       </div>
     );
@@ -101,13 +111,11 @@ export function ListMap({
         >
           <div
             className={cn(
-              "p-1 rounded-full cursor-pointer transition-transform hover:scale-110",
-              selectedItemId === pin.id
-                ? "bg-primary text-primary-foreground scale-125"
-                : "bg-background border border-border shadow-sm"
+              "cursor-pointer transition-transform hover:scale-110",
+              selectedItemId === pin.id ? "scale-125" : ""
             )}
           >
-            <MapPin className="h-4 w-4" />
+            <MapPin fill="--foreground" color="white" strokeWidth={1} size={36} />
           </div>
         </Marker>
       ))}
