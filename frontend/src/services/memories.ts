@@ -22,6 +22,27 @@ export async function createMemory(
   return memory;
 }
 
+export async function updateMemory(
+  id: string,
+  data: Partial<Omit<Memory, "id" | "createdAt" | "updatedAt">>
+): Promise<Memory> {
+  await delay();
+  const index = memories.findIndex((m) => m.id === id);
+  if (index === -1) throw new Error("Memory not found");
+  const updated: Memory = {
+    ...memories[index],
+    ...data,
+    updatedAt: new Date().toISOString(),
+  };
+  memories = memories.map((m) => (m.id === id ? updated : m));
+  return updated;
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  await delay();
+  memories = memories.filter((m) => m.id !== id);
+}
+
 function delay(ms = 150) {
   return new Promise((res) => setTimeout(res, ms));
 }

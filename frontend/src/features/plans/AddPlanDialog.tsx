@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -23,10 +23,10 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { useCreatePlan } from "@/hooks/usePlans";
+import { useCreatePlan, useUpdatePlan } from "@/hooks/usePlans";
 import { useUpdateListItem } from "@/hooks/useListItems";
 import { mockUsers, currentUser } from "@/mock";
-import type { ListItemStatus } from "@/types";
+import type { Plan, ListItemStatus } from "@/types";
 
 const DURATION_OPTIONS = [
   { label: "30 minutes", value: "30" },
@@ -52,6 +52,7 @@ interface AddPlanDialogProps {
   itemStatus: ListItemStatus;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  plan?: Plan;
 }
 
 export function AddPlanDialog({
@@ -59,9 +60,12 @@ export function AddPlanDialog({
   itemStatus,
   open,
   onOpenChange,
+  plan,
 }: AddPlanDialogProps) {
+  const isEditing = !!plan;
   const [attendeeIds, setAttendeeIds] = useState<string[]>([currentUser.id]);
   const createPlan = useCreatePlan();
+  const updatePlan = useUpdatePlan();
   const updateItem = useUpdateListItem();
 
   const {
@@ -74,6 +78,18 @@ export function AddPlanDialog({
     resolver: zodResolver(schema),
   });
 
+  useEffect(() => {
+    if (open) {
+      reset({
+        date: plan?.date ?? "",
+        time: plan?.time ?? "",
+        durationMinutes: plan?.durationMinutes?.toString() ?? "",
+        notes: plan?.notes ?? "",
+      });
+      setAttendeeIds(plan?.attendeeIds ?? [currentUser.id]);
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const toggleAttendee = (userId: string) => {
     setAttendeeIds((prev) =>
       prev.includes(userId)
@@ -83,7 +99,7 @@ export function AddPlanDialog({
   };
 
   const onSubmit = async (values: FormValues) => {
-    await createPlan.mutateAsync({
+    const data = {
       listItemId,
       date: values.date,
       time: values.time || undefined,
@@ -92,10 +108,15 @@ export function AddPlanDialog({
         : undefined,
       notes: values.notes || undefined,
       attendeeIds,
-    });
+    };
 
-    if (itemStatus === "wanted") {
-      updateItem.mutate({ id: listItemId, data: { status: "planned" } });
+    if (isEditing) {
+      await updatePlan.mutateAsync({ id: plan.id, listItemId, data });
+    } else {
+      await createPlan.mutateAsync(data);
+      if (itemStatus === "wanted") {
+        updateItem.mutate({ id: listItemId, data: { status: "planned" } });
+      }
     }
 
     handleClose();
@@ -107,11 +128,13 @@ export function AddPlanDialog({
     onOpenChange(false);
   };
 
+  const isPending = createPlan.isPending || updatePlan.isPending;
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add a Plan</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Plan" : "Add a Plan"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {/* Date */}
@@ -140,7 +163,10 @@ export function AddPlanDialog({
                 <Timer className="h-3.5 w-3.5" />
                 Duration
               </Label>
-              <Select onValueChange={(v) => setValue("durationMinutes", v)}>
+              <Select
+                defaultValue={plan?.durationMinutes?.toString()}
+                onValueChange={(v) => setValue("durationMinutes", v)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Optional" />
                 </SelectTrigger>
@@ -204,8 +230,8 @@ export function AddPlanDialog({
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createPlan.isPending}>
-              {createPlan.isPending ? "Saving…" : "Save Plan"}
+            <Button type="submit" disabled={isPending}>
+              {isPending ? "Saving…" : isEditing ? "Save Changes" : "Save Plan"}
             </Button>
           </DialogFooter>
         </form>

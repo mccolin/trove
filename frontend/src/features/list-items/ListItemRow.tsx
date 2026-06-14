@@ -1,6 +1,6 @@
 import { MapPin, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, formatLocalDate } from "@/lib/utils";
 import type { ListItem, Place, Occurrence } from "@/types";
 import { resolveTarget } from "@/services/listItems";
 import { getPlaceById } from "@/services/places";
@@ -75,7 +75,7 @@ export function ListItemRow({ item, isSelected, onClick }: ListItemRowProps) {
           {date && (
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
               <Calendar className="h-3 w-3 shrink-0" />
-              {new Date(date).toLocaleDateString()}
+              {formatLocalDate(date)}
             </p>
           )}
           {item.notes && (

@@ -22,6 +22,22 @@ export async function createPlan(
   return plan;
 }
 
+export async function updatePlan(
+  id: string,
+  data: Partial<Omit<Plan, "id" | "createdAt" | "updatedAt">>
+): Promise<Plan> {
+  await delay();
+  const index = plans.findIndex((p) => p.id === id);
+  if (index === -1) throw new Error("Plan not found");
+  const updated: Plan = {
+    ...plans[index],
+    ...data,
+    updatedAt: new Date().toISOString(),
+  };
+  plans = plans.map((p) => (p.id === id ? updated : p));
+  return updated;
+}
+
 export async function deletePlan(id: string): Promise<void> {
   await delay();
   plans = plans.filter((p) => p.id !== id);

@@ -1,27 +1,48 @@
 import { useState } from "react";
-import { X, MapPin, Calendar, ExternalLink, Star, CheckCircle, CalendarPlus } from "lucide-react";
+import { X, MapPin, Calendar, ExternalLink, Star, CheckCircle, CalendarPlus, BookHeart, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { usePlans } from "@/hooks/usePlans";
-import { useMemories } from "@/hooks/useMemories";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { usePlans, useDeletePlan } from "@/hooks/usePlans";
+import { useMemories, useDeleteMemory } from "@/hooks/useMemories";
 import { useUpdateListItem } from "@/hooks/useListItems";
+import { formatLocalDate } from "@/lib/utils";
 import { resolveTarget } from "@/services/listItems";
 import { getPlaceById } from "@/services/places";
 import { AddPlanDialog } from "@/features/plans/AddPlanDialog";
-import type { ListItem, Place, Occurrence } from "@/types";
+import { AddMemoryDialog } from "@/features/memories/AddMemoryDialog";
+import type { ListItem, Plan, Memory, Place, Occurrence } from "@/types";
 
 interface ListItemDetailDrawerProps {
   item: ListItem;
   onClose: () => void;
 }
 
+interface ConfirmState {
+  title: string;
+  description: string;
+  onConfirm: () => void;
+}
+
 export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProps) {
-  const [showAddPlan, setShowAddPlan] = useState(false);
+  const [planDialogOpen, setPlanDialogOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [memoryDialogOpen, setMemoryDialogOpen] = useState(false);
+  const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+
+  const openAddPlan = () => { setEditingPlan(null); setPlanDialogOpen(true); };
+  const openEditPlan = (plan: Plan) => { setEditingPlan(plan); setPlanDialogOpen(true); };
+  const openAddMemory = () => { setEditingMemory(null); setMemoryDialogOpen(true); };
+  const openEditMemory = (memory: Memory) => { setEditingMemory(memory); setMemoryDialogOpen(true); };
+
   const target = resolveTarget(item);
   const { data: plans } = usePlans(item.id);
   const { data: memories } = useMemories(item.id);
   const updateItem = useUpdateListItem();
+  const deletePlan = useDeletePlan();
+  const deleteMemory = useDeleteMemory();
 
   const place =
     item.targetType === "place"
@@ -33,6 +54,34 @@ export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProp
   const handleMarkDone = () => {
     updateItem.mutate({ id: item.id, data: { status: "done" } });
   };
+
+  const confirmDeletePlan = (plan: Plan) => {
+    setConfirm({
+      title: "Delete plan?",
+      description: `This will permanently remove the plan for ${formatLocalDate(plan.date)}.`,
+      onConfirm: () => {
+        deletePlan.mutate(
+          { id: plan.id, listItemId: item.id },
+          { onSuccess: () => setConfirm(null) }
+        );
+      },
+    });
+  };
+
+  const confirmDeleteMemory = (memory: Memory) => {
+    setConfirm({
+      title: "Delete memory?",
+      description: "This will permanently remove this memory.",
+      onConfirm: () => {
+        deleteMemory.mutate(
+          { id: memory.id, listItemId: item.id },
+          { onSuccess: () => setConfirm(null) }
+        );
+      },
+    });
+  };
+
+  const isDeleting = deletePlan.isPending || deleteMemory.isPending;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
@@ -118,7 +167,7 @@ export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProp
                 variant="ghost"
                 size="sm"
                 className="h-auto py-0.5 px-1.5 text-xs"
-                onClick={() => setShowAddPlan(true)}
+                onClick={openAddPlan}
               >
                 <CalendarPlus className="h-3.5 w-3.5 mr-1" />
                 Add
@@ -129,10 +178,30 @@ export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProp
             <div className="space-y-2">
               {plans.map((plan) => (
                 <div key={plan.id} className="text-sm p-2 bg-muted rounded-md">
-                  <p className="font-medium">
-                    {new Date(plan.date).toLocaleDateString()}
-                    {plan.time && ` at ${plan.time}`}
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-medium">
+                      {formatLocalDate(plan.date)}
+                      {plan.time && ` at ${plan.time}`}
+                    </p>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                        onClick={() => openEditPlan(plan)}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                        onClick={() => confirmDeletePlan(plan)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
                   {plan.notes && (
                     <p className="text-muted-foreground text-xs mt-0.5">{plan.notes}</p>
                   )}
@@ -148,18 +217,49 @@ export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProp
 
         {/* Memories */}
         <div>
-          <p className="text-sm font-medium mb-2">Memories</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium">Memories</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto py-0.5 px-1.5 text-xs"
+              onClick={openAddMemory}
+            >
+              <BookHeart className="h-3.5 w-3.5 mr-1" />
+              Add
+            </Button>
+          </div>
           {memories && memories.length > 0 ? (
             <div className="space-y-2">
               {memories.map((memory) => (
                 <div key={memory.id} className="text-sm p-2 bg-muted rounded-md">
-                  <div className="flex items-center gap-1 mb-1">
-                    {Array.from({ length: memory.rating }).map((_, i) => (
-                      <Star key={i} className="h-3 w-3 fill-amber-400 text-amber-400" />
-                    ))}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: memory.rating }).map((_, i) => (
+                        <Star key={i} className="h-3 w-3 fill-amber-400 text-amber-400" />
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                        onClick={() => openEditMemory(memory)}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                        onClick={() => confirmDeleteMemory(memory)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
                   {memory.notes && (
-                    <p className="text-muted-foreground text-xs">{memory.notes}</p>
+                    <p className="text-muted-foreground text-xs mt-1">{memory.notes}</p>
                   )}
                   <p className="text-xs text-muted-foreground mt-1">
                     {new Date(memory.visitedAt).toLocaleDateString()}
@@ -174,17 +274,28 @@ export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProp
       </div>
 
       {/* Actions */}
-      {item.status !== "done" && (
-        <div className="p-4 border-t flex gap-2">
+      <div className="p-4 border-t flex gap-2">
+        {item.status !== "done" && (
           <Button
             variant="outline"
             size="sm"
             className="flex-1"
-            onClick={() => setShowAddPlan(true)}
+            onClick={openAddPlan}
           >
             <CalendarPlus className="h-4 w-4 mr-1" />
             Add Plan
           </Button>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1"
+          onClick={openAddMemory}
+        >
+          <BookHeart className="h-4 w-4 mr-1" />
+          Add Memory
+        </Button>
+        {item.status !== "done" && (
           <Button
             variant="outline"
             size="sm"
@@ -195,14 +306,31 @@ export function ListItemDetailDrawer({ item, onClose }: ListItemDetailDrawerProp
             <CheckCircle className="h-4 w-4 mr-1" />
             Mark Done
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       <AddPlanDialog
         listItemId={item.id}
         itemStatus={item.status}
-        open={showAddPlan}
-        onOpenChange={setShowAddPlan}
+        open={planDialogOpen}
+        onOpenChange={setPlanDialogOpen}
+        plan={editingPlan ?? undefined}
+      />
+      <AddMemoryDialog
+        listItemId={item.id}
+        itemStatus={item.status}
+        plans={plans}
+        open={memoryDialogOpen}
+        onOpenChange={setMemoryDialogOpen}
+        memory={editingMemory ?? undefined}
+      />
+      <ConfirmDialog
+        open={!!confirm}
+        onOpenChange={(open) => { if (!open) setConfirm(null); }}
+        title={confirm?.title ?? ""}
+        description={confirm?.description ?? ""}
+        onConfirm={confirm?.onConfirm ?? (() => {})}
+        isPending={isDeleting}
       />
     </div>
   );
